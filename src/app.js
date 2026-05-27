@@ -3,6 +3,9 @@ import cors from "cors";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
+
+import authRoutes from "./routes/authRoutes.js";
+
 dotenv.config();
 
 const app = express();
@@ -13,8 +16,9 @@ app.use(express.json({ limit: "5mb" }));
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.use("/api/auth", authRoutes);
 app.get("/", (req, res) => {
-  res.send("Travel");
+  res.send("TRAVEL MINIGAME API READY 🚀");
 });
 
 export default app;

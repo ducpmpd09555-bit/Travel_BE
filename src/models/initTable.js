@@ -21,8 +21,29 @@ const initTables = async () => {
         status VARCHAR(20) DEFAULT 'active'
           CHECK (status IN ('active', 'locked', 'inactive')),
 
+        is_locked BOOLEAN DEFAULT FALSE,
+        locked_at TIMESTAMP,
+        lock_until TIMESTAMP,
+        lock_reason TEXT,
+
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ================== REFRESH TOKENS ==================
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id SERIAL PRIMARY KEY,
+
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+
+        token TEXT NOT NULL UNIQUE,
+
+        expired_at TIMESTAMP NOT NULL,
+        revoked_at TIMESTAMP,
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -355,6 +376,26 @@ const initTables = async () => {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_users_username 
       ON users(username);
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_status 
+      ON users(status);
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_is_locked 
+      ON users(is_locked);
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user 
+      ON refresh_tokens(user_id);
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token 
+      ON refresh_tokens(token);
     `);
 
     await pool.query(`

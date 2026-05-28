@@ -398,25 +398,28 @@ export const getProfileService = async (userId) => {
 };
 
 // ================== UPDATE PROFILE ==================
+// ================== UPDATE PROFILE ==================
 export const updateProfileService = async (
   userId,
-  { username, phone, area, area_type },
+  { username, phone, area },
 ) => {
-  if (!username || !phone) {
-    const err = new Error("Họ tên và số điện thoại không được để trống");
+  if (!username || !phone || !area) {
+    const err = new Error(
+      "Họ tên, số điện thoại và khu vực không được để trống",
+    );
     err.status = 400;
     throw err;
   }
 
   const normalizedUsername = username.trim();
   const normalizedPhone = phone.trim();
-  const finalAreaType = area_type || "outside_danang";
+  const normalizedArea = area.trim();
 
-  if (!["danang", "outside_danang"].includes(finalAreaType)) {
-    const err = new Error("Khu vực không hợp lệ");
-    err.status = 400;
-    throw err;
-  }
+  const finalAreaType =
+    normalizedArea.toLowerCase() === "đà nẵng" ||
+    normalizedArea.toLowerCase() === "da nang"
+      ? "danang"
+      : "outside_danang";
 
   const existedUser = await pool.query(
     `
@@ -469,7 +472,13 @@ export const updateProfileService = async (
       created_at,
       updated_at
     `,
-    [normalizedUsername, normalizedPhone, area || null, finalAreaType, userId],
+    [
+      normalizedUsername,
+      normalizedPhone,
+      normalizedArea,
+      finalAreaType,
+      userId,
+    ],
   );
 
   if (result.rows.length === 0) {

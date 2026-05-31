@@ -105,6 +105,9 @@ const initTables = async () => {
         description TEXT,
         image_url TEXT,
         map_url TEXT,
+        
+        lat NUMERIC(10, 7), -- TRƯỜNG BỊ THIẾU
+        lng NUMERIC(10, 7), -- TRƯỜNG BỊ THIẾU
 
         status VARCHAR(20) DEFAULT 'active'
           CHECK (status IN ('active', 'inactive')),
@@ -199,6 +202,9 @@ const initTables = async () => {
         daily_play_limit_id INTEGER REFERENCES daily_play_limits(id) ON DELETE CASCADE,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         campaign_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE,
+        
+        country_id INTEGER REFERENCES countries(id) ON DELETE NO ACTION, -- TRƯỜNG BỊ THIẾU
+        category_played VARCHAR(100),                                    -- TRƯỜNG BỊ THIẾU
 
         play_type VARCHAR(30) DEFAULT 'main'
           CHECK (play_type IN ('main', 'share_bonus')),

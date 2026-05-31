@@ -134,7 +134,7 @@ export const updateCountryService = async (id, body) => {
 
 // ================= CREATE LOCATION =================
 export const createLocationService = async (body) => {
-  const { country_id, name, description, image_url, map_url, status } = body;
+  const { country_id, name, description, image_url, status, lat, lng } = body;
 
   const duplicateCheck = await pool.query(
     "SELECT id FROM locations WHERE country_id = $1 AND name = $2",
@@ -143,20 +143,22 @@ export const createLocationService = async (body) => {
   if (duplicateCheck.rows.length > 0)
     throw { status: 409, message: "Địa điểm này đã tồn tại trong quốc gia" };
 
-  // Tự động sinh slug từ name
   const slug = generateSlug(name);
+  const parsedLat = lat === "" || lat === undefined ? null : Number(lat);
+  const parsedLng = lng === "" || lng === undefined ? null : Number(lng);
 
   const result = await pool.query(
-    `INSERT INTO locations (country_id, name, slug, description, image_url, map_url, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    `INSERT INTO locations (country_id, name, slug, description, image_url, status, lat, lng)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
     [
       country_id,
       name,
       slug,
       description,
       image_url,
-      map_url,
       status || "active",
+      parsedLat,
+      parsedLng,
     ],
   );
   return result.rows[0];
@@ -223,10 +225,11 @@ export const getLocationByIdService = async (id) => {
 
 // ================= UPDATE LOCATION =================
 export const updateLocationService = async (id, body) => {
-  const { name, description, image_url, map_url, status } = body || {};
+  const { name, description, image_url, status, lat, lng } = body || {};
 
-  // Tự động generate slug mới nếu có update name
   const slug = name ? generateSlug(name) : null;
+  const parsedLat = lat === "" || lat === undefined ? null : Number(lat);
+  const parsedLng = lng === "" || lng === undefined ? null : Number(lng);
 
   const result = await pool.query(
     `UPDATE locations 
@@ -235,11 +238,12 @@ export const updateLocationService = async (id, body) => {
        slug = COALESCE($2, slug),
        description = COALESCE($3, description),
        image_url = COALESCE($4, image_url),
-       map_url = COALESCE($5, map_url),
-       status = COALESCE($6, status),
+       status = COALESCE($5, status),
+       lat = COALESCE($6, lat),
+       lng = COALESCE($7, lng),
        updated_at = CURRENT_TIMESTAMP
-     WHERE id = $7 RETURNING *`,
-    [name, slug, description, image_url, map_url, status, id],
+     WHERE id = $8 RETURNING *`,
+    [name, slug, description, image_url, status, parsedLat, parsedLng, id],
   );
 
   if (result.rows.length === 0)

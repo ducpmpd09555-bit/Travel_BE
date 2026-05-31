@@ -14,6 +14,7 @@ import userAdminRoutes from "./routes/Admin/userRoutes.js";
 import mapRoutes from "./routes/Client/mapRoutes.js";
 import questionUserRoutes from "./routes/Client/questionRoutes.js";
 import rewardUserRoutes from "./routes/Client/rewardRoutes.js";
+import playRoutes from "./routes/Client/playRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 
 dotenv.config();
@@ -36,6 +37,7 @@ app.use("/api/campaigns", campaignUserRoutes);
 app.use("/api/questions", questionUserRoutes);
 app.use("/api/rewards", rewardUserRoutes);
 app.use("/api/map", mapRoutes);
+app.use("/api/play", playRoutes);
 app.use("/api/auth", authRoutes);
 app.get("/", (req, res) => {
   res.send("TRAVEL MINIGAME API READY 🚀");

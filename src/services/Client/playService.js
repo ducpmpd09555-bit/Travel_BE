@@ -4,6 +4,16 @@ import cron from "node-cron";
 // ======================================================================
 // API 1: KHỞI TẠO LƯỢT CHƠI (CHỐNG LỖI 500 RACE CONDITION)
 // ======================================================================
+const getRandomReward = (rewards) => {
+  const totalWeight = rewards.reduce((sum, item) => sum + item.rate, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const reward of rewards) {
+    random -= reward.rate;
+    if (random <= 0) return reward;
+  }
+  return null;
+};
 export const initPlaySessionService = async (
   userId,
   locationId,
@@ -289,25 +299,12 @@ export const getUserRewardsService = async (userId, campaignId) => {
 // ======================================================================
 // API 7: LƯU KẾT QUẢ VÒNG QUAY (ĐÃ FIX LỖI AREA_TYPE)
 // ======================================================================
-export const saveSpinResultService = async (
-  userId,
-  sessionId,
-  campaignId,
-  rewardId,
-) => {
+export const saveSpinResultService = async (userId, sessionId, campaignId) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // 1. Lấy thông tin User để biết area_type (bắt buộc phải là 'danang' hoặc 'outside_danang')
-    const userRes = await client.query(
-      `SELECT area_type FROM users WHERE id = $1`,
-      [userId],
-    );
-    // Fallback về outside_danang nếu user chưa điền
-    const userAreaType = userRes.rows[0]?.area_type || "outside_danang";
-
-    // 2. Kiểm tra xem phiên này đã được quay chưa
+    // 1. KIỂM TRA ĐIỀU KIỆN QUAY & KHÓA PHIÊN (Chống spam click)
     const sessionRes = await client.query(
       `SELECT is_eligible_spin FROM play_sessions WHERE id = $1 AND user_id = $2 FOR UPDATE`,
       [sessionId, userId],
@@ -316,25 +313,74 @@ export const saveSpinResultService = async (
     if (!sessionRes.rows[0].is_eligible_spin)
       throw new Error("ALREADY_SPUN_OR_NOT_ELIGIBLE");
 
-    // 3. Lấy thông tin Phần thưởng
-    const rewardRes = await client.query(
-      `SELECT * FROM rewards WHERE id = $1`,
-      [rewardId],
+    // 2. LẤY KHU VỰC CỦA USER
+    const userRes = await client.query(
+      `SELECT area_type FROM users WHERE id = $1`,
+      [userId],
     );
-    if (rewardRes.rows.length === 0) throw new Error("REWARD_NOT_FOUND");
-    const rewardData = rewardRes.rows[0];
+    const userAreaType = userRes.rows[0]?.area_type || "outside_danang";
 
-    // Xác định loại quà (voucher hoặc physical)
-    const typeOfReward = rewardData.type || "voucher";
-    const valueOfReward = rewardData.voucher_value || 0;
+    // 3. TÌM GIẢI "CHÚC MAY MẮN LẦN SAU" (Fallback mặc định)
+    // Yêu cầu: Trong bảng rewards phải có 1 row với type = 'no_reward'
+    const fallbackRes = await client.query(
+      `SELECT id, type, voucher_value FROM rewards WHERE type = 'no_reward' LIMIT 1`,
+    );
+    const fallbackReward = fallbackRes.rows[0];
 
-    // 4. Tạo mã Voucher (nếu là voucher)
+    // 4. LẤY DANH SÁCH QUÀ CÒN HÀNG VÀ CÓ RATE
+    const availableRewardsRes = await client.query(
+      `SELECT r.id, r.type, r.voucher_value, rr.rate 
+       FROM rewards r
+       JOIN reward_rates rr ON r.id = rr.reward_id
+       WHERE rr.area_type = $1 
+         AND r.remaining_quantity > 0 
+         AND rr.rate > 0 
+         AND r.type != 'no_reward'`,
+      [userAreaType],
+    );
+
+    let finalReward = null;
+
+    // 5. LOGIC QUAY THƯỞNG & XỬ LÝ RACE CONDITION CHỐNG CHÁY KHO
+    if (availableRewardsRes.rows.length === 0) {
+      // Hết sạch quà thật -> Trúng giải Fallback
+      finalReward = fallbackReward;
+    } else {
+      // Có quà -> Bắt đầu random theo tỷ lệ
+      const selectedReward = getRandomReward(availableRewardsRes.rows);
+
+      if (!selectedReward) {
+        finalReward = fallbackReward;
+      } else {
+        // KHÓA MÓN QUÀ VỪA TRÚNG ĐỂ CHECK LẠI KHO TRƯỚC KHI CHỐT
+        const lockedRewardRes = await client.query(
+          `SELECT remaining_quantity FROM rewards WHERE id = $1 FOR UPDATE`,
+          [selectedReward.id],
+        );
+
+        if (lockedRewardRes.rows[0].remaining_quantity <= 0) {
+          // Nếu bị user khác giành mất món cuối cùng ngay trong tích tắc -> Trượt, chuyển sang Fallback
+          finalReward = fallbackReward;
+        } else {
+          // Hàng vẫn còn -> Chốt món quà này
+          finalReward = selectedReward;
+        }
+      }
+    }
+
+    // Đề phòng trường hợp database setup thiếu giải no_reward
+    if (!finalReward) throw new Error("SYSTEM_ERROR_MISSING_FALLBACK_REWARD");
+
+    // 6. XỬ LÝ LOGIC LOẠI QUÀ
+    const typeOfReward = finalReward.type || "no_reward";
+    const valueOfReward = finalReward.voucher_value || 0;
     let voucherCode = null;
+
     if (typeOfReward === "voucher") {
       voucherCode = `SUMMER26-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     }
 
-    // 5. GHI VÀO DB BẢNG SPIN_RESULTS (Tuân thủ nghiêm ngặt Constraint)
+    // 7. GHI LỊCH SỬ QUAY VÀO DB
     await client.query(
       `INSERT INTO spin_results (
         play_session_id, user_id, campaign_id, reward_id, 
@@ -345,34 +391,40 @@ export const saveSpinResultService = async (
         sessionId,
         userId,
         campaignId,
-        rewardId,
+        finalReward.id,
         userAreaType,
         typeOfReward,
         voucherCode,
         valueOfReward,
-        // Ép về đúng các chữ mà Database cho phép
-        typeOfReward === "voucher" ? "assigned" : null, // KHÔNG DÙNG 'active'
-        typeOfReward === "physical" ? "pending_contact" : null, // KHÔNG DÙNG 'pending'
+        typeOfReward === "voucher" ? "assigned" : null,
+        typeOfReward === "physical" ? "pending_contact" : null,
       ],
     );
 
-    // 6. Trừ đi 1 số lượng quà trong kho
-    await client.query(
-      `UPDATE rewards SET remaining_quantity = remaining_quantity - 1 WHERE id = $1 AND remaining_quantity > 0`,
-      [rewardId],
-    );
+    // 8. TRỪ KHO QUÀ (Chỉ trừ nếu đó là quà thật, bỏ qua giải no_reward)
+    if (typeOfReward !== "no_reward") {
+      await client.query(
+        `UPDATE rewards SET remaining_quantity = remaining_quantity - 1 WHERE id = $1`,
+        [finalReward.id],
+      );
+    }
 
-    // 7. Khóa phiên chơi này lại (Đánh dấu đã quay)
+    // 9. KHÓA PHIÊN CHƠI (Tước cờ quay)
     await client.query(
       `UPDATE play_sessions SET is_eligible_spin = false WHERE id = $1`,
       [sessionId],
     );
 
     await client.query("COMMIT");
-    return { success: true, voucherCode };
+    return {
+      success: true,
+      rewardId: finalReward.id,
+      rewardType: typeOfReward,
+      voucherCode,
+    };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("🔥 LỖI SQL TẠI API SAVE_SPIN_RESULT:", error.message);
+    console.error("🔥 LỖI SQL TẠI API SPIN:", error.message);
     throw error;
   } finally {
     client.release();

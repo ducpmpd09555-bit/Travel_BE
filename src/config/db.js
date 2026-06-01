@@ -1,20 +1,34 @@
 import { Pool } from "pg";
 import dotenv from "dotenv";
 dotenv.config();
+let pool;
+if (!global.pgPool) {
+  const connectionString = process.env.DATABASE_URL;
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+  if (!connectionString) {
+    console.warn(
+      "⚠️ Cảnh báo: Biến môi trường DATABASE_URL không tồn tại. Vui lòng kiểm tra lại cấu hình (.env hoặc Railway Variables).",
+    );
+  }
+
+  global.pgPool = new Pool({
+    connectionString: connectionString,
+    ssl: {
+      rejectUnauthorized: false,
+    },
+    max: 15,
+    idleTimeoutMillis: 30000,
+  });
+}
+
+pool = global.pgPool;
+
+pool.on("connect", () => {
+  console.log("✅ Kết nối PostgreSQL Pool thành công.");
 });
 
-pool
-  .connect()
-  .then(() => {
-    console.log("PostgreSql Connected Success");
-  })
-  .catch((err) => console.error("DB connection error:", err));
+pool.on("error", (err) => {
+  console.error("❌ Lỗi Pool PostgreSQL:", err);
+});
 
 export default pool;

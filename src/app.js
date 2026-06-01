@@ -4,12 +4,13 @@ import morgan from "morgan";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
 
+import dashboardRoutes from "./routes/Admin/dashboardRoutes.js";
 import campaignAdminRoutes from "./routes/Admin/campaignRoutes.js";
 import mapAdminRoutes from "./routes/Admin/mapRoutes.js";
 import questionAdminRoutes from "./routes/Admin/questionRoutes.js";
 import rewardAdminRoutes from "./routes/Admin/rewardRoutes.js";
 import campaignUserRoutes from "./routes/campaignRoutes.js";
-
+import sharePostRoutes from "./routes/Admin/sharePostRoutes.js";
 import userAdminRoutes from "./routes/Admin/userRoutes.js";
 import mapRoutes from "./routes/Client/mapRoutes.js";
 import questionUserRoutes from "./routes/Client/questionRoutes.js";
@@ -32,7 +33,8 @@ app.use("/api/admin/campaigns", campaignAdminRoutes);
 app.use("/api/admin/questions", questionAdminRoutes);
 app.use("/api/admin/rewards", rewardAdminRoutes);
 app.use("/api/admin/map", mapAdminRoutes);
-
+app.use("/api/admin/share-posts", sharePostRoutes);
+app.use("/api/admin/dashboard", dashboardRoutes);
 app.use("/api/campaigns", campaignUserRoutes);
 app.use("/api/questions", questionUserRoutes);
 app.use("/api/rewards", rewardUserRoutes);

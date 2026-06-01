@@ -195,9 +195,9 @@ export const getUserRewards = async (req, res) => {
 export const saveSpinResult = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { session_id, campaign_id, reward_id } = req.body;
+    const { session_id, campaign_id } = req.body;
 
-    if (!session_id || !campaign_id || !reward_id) {
+    if (!session_id || !campaign_id) {
       return res
         .status(400)
         .json({ success: false, message: "Thiếu dữ liệu lưu kết quả quay" });
@@ -207,7 +207,6 @@ export const saveSpinResult = async (req, res) => {
       userId,
       session_id,
       campaign_id,
-      reward_id,
     );
     return res.status(200).json({
       success: true,

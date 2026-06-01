@@ -165,6 +165,10 @@ export const updateRewardService = async (id, body) => {
   try {
     await client.query("BEGIN");
 
+    // Xử lý an toàn: Ép chuỗi rỗng "" thành null để Postgres không bị crash Data Type
+    const safeVoucherValue = voucher_value === "" ? null : voucher_value;
+    const safeMaxDiscount = max_discount === "" ? null : max_discount;
+
     // 1. Cập nhật bảng thông tin chung phần thưởng
     const rewardRes = await client.query(
       `UPDATE rewards 
@@ -173,8 +177,8 @@ export const updateRewardService = async (id, body) => {
          type = COALESCE($2, type),
          quantity = COALESCE($3, quantity),
          remaining_quantity = COALESCE($4, remaining_quantity),
-         voucher_value = COALESCE($5, voucher_value),
-         max_discount = COALESCE($6, max_discount),
+         voucher_value = $5, -- Cho phép ghi đè thành null nếu đổi loại quà
+         max_discount = $6,  -- Cho phép ghi đè thành null nếu đổi loại quà
          description = COALESCE($7, description),
          image_url = COALESCE($8, image_url),
          status = COALESCE($9, status),
@@ -185,8 +189,8 @@ export const updateRewardService = async (id, body) => {
         type,
         quantity,
         remaining_quantity,
-        voucher_value,
-        max_discount,
+        safeVoucherValue, // <--- Đã được bọc an toàn
+        safeMaxDiscount, // <--- Đã được bọc an toàn
         description,
         image_url,
         status,
@@ -227,6 +231,7 @@ export const updateRewardService = async (id, body) => {
     };
   } catch (error) {
     await client.query("ROLLBACK");
+    console.error("Lỗi Update Reward:", error);
     throw error;
   } finally {
     client.release();

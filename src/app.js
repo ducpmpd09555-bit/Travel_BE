@@ -3,7 +3,7 @@ import cors from "cors";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
-
+import spinResultRoutes from "./routes/Admin/spinResultRoutes.js";
 import dashboardRoutes from "./routes/Admin/dashboardRoutes.js";
 import campaignAdminRoutes from "./routes/Admin/campaignRoutes.js";
 import mapAdminRoutes from "./routes/Admin/mapRoutes.js";
@@ -35,6 +35,7 @@ app.use("/api/admin/rewards", rewardAdminRoutes);
 app.use("/api/admin/map", mapAdminRoutes);
 app.use("/api/admin/share-posts", sharePostRoutes);
 app.use("/api/admin/dashboard", dashboardRoutes);
+app.use("/api/admin/spin-results", spinResultRoutes);
 app.use("/api/campaigns", campaignUserRoutes);
 app.use("/api/questions", questionUserRoutes);
 app.use("/api/rewards", rewardUserRoutes);

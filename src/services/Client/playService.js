@@ -5,11 +5,15 @@ import cron from "node-cron";
 // API 1: KHỞI TẠO LƯỢT CHƠI (CHỐNG LỖI 500 RACE CONDITION)
 // ======================================================================
 const getRandomReward = (rewards) => {
-  const totalWeight = rewards.reduce((sum, item) => sum + item.rate, 0);
+  // Dùng parseFloat để biến chuỗi "50.000" thành số thực 50.0
+  const totalWeight = rewards.reduce(
+    (sum, item) => sum + parseFloat(item.rate),
+    0,
+  );
   let random = Math.random() * totalWeight;
 
   for (const reward of rewards) {
-    random -= reward.rate;
+    random -= parseFloat(reward.rate);
     if (random <= 0) return reward;
   }
   return null;
@@ -320,59 +324,48 @@ export const saveSpinResultService = async (userId, sessionId, campaignId) => {
     );
     const userAreaType = userRes.rows[0]?.area_type || "outside_danang";
 
-    // 3. TÌM GIẢI "CHÚC MAY MẮN LẦN SAU" (Fallback mặc định)
-    // Yêu cầu: Trong bảng rewards phải có 1 row với type = 'no_reward'
-    const fallbackRes = await client.query(
-      `SELECT id, type, voucher_value FROM rewards WHERE type = 'no_reward' LIMIT 1`,
-    );
-    const fallbackReward = fallbackRes.rows[0];
-
-    // 4. LẤY DANH SÁCH QUÀ CÒN HÀNG VÀ CÓ RATE
+    // 3. LẤY DANH SÁCH QUÀ CÒN HÀNG VÀ CÓ RATE
+    // Đã xóa điều kiện r.type != 'no_reward' vì không dùng nữa
     const availableRewardsRes = await client.query(
       `SELECT r.id, r.type, r.voucher_value, rr.rate 
        FROM rewards r
        JOIN reward_rates rr ON r.id = rr.reward_id
        WHERE rr.area_type = $1 
+         AND r.campaign_id = $2
+         AND r.status = 'active'
          AND r.remaining_quantity > 0 
-         AND rr.rate > 0 
-         AND r.type != 'no_reward'`,
-      [userAreaType],
+         AND rr.rate > 0`,
+      [userAreaType, campaignId],
     );
 
-    let finalReward = null;
-
-    // 5. LOGIC QUAY THƯỞNG & XỬ LÝ RACE CONDITION CHỐNG CHÁY KHO
+    // XỬ LÝ KHI KHO HẾT SẠCH QUÀ
     if (availableRewardsRes.rows.length === 0) {
-      // Hết sạch quà thật -> Trúng giải Fallback
-      finalReward = fallbackReward;
-    } else {
-      // Có quà -> Bắt đầu random theo tỷ lệ
-      const selectedReward = getRandomReward(availableRewardsRes.rows);
-
-      if (!selectedReward) {
-        finalReward = fallbackReward;
-      } else {
-        // KHÓA MÓN QUÀ VỪA TRÚNG ĐỂ CHECK LẠI KHO TRƯỚC KHI CHỐT
-        const lockedRewardRes = await client.query(
-          `SELECT remaining_quantity FROM rewards WHERE id = $1 FOR UPDATE`,
-          [selectedReward.id],
-        );
-
-        if (lockedRewardRes.rows[0].remaining_quantity <= 0) {
-          // Nếu bị user khác giành mất món cuối cùng ngay trong tích tắc -> Trượt, chuyển sang Fallback
-          finalReward = fallbackReward;
-        } else {
-          // Hàng vẫn còn -> Chốt món quà này
-          finalReward = selectedReward;
-        }
-      }
+      throw new Error("OUT_OF_REWARDS");
     }
 
-    // Đề phòng trường hợp database setup thiếu giải no_reward
-    if (!finalReward) throw new Error("SYSTEM_ERROR_MISSING_FALLBACK_REWARD");
+    // 4. LOGIC QUAY THƯỞNG & XỬ LÝ RACE CONDITION
+    const selectedReward = getRandomReward(availableRewardsRes.rows);
 
-    // 6. XỬ LÝ LOGIC LOẠI QUÀ
-    const typeOfReward = finalReward.type || "no_reward";
+    if (!selectedReward) {
+      throw new Error("OUT_OF_REWARDS");
+    }
+
+    // KHÓA MÓN QUÀ VỪA TRÚNG ĐỂ CHECK LẠI KHO TRƯỚC KHI CHỐT
+    const lockedRewardRes = await client.query(
+      `SELECT remaining_quantity FROM rewards WHERE id = $1 FOR UPDATE`,
+      [selectedReward.id],
+    );
+
+    if (lockedRewardRes.rows[0].remaining_quantity <= 0) {
+      // Bị user khác giành mất món cuối cùng trong tích tắc
+      // Báo lỗi để Frontend nhắc user bấm quay lại (vì chưa tới bước tước lượt quay nên user k bị thiệt)
+      throw new Error("REWARD_OUT_OF_STOCK_TRY_AGAIN");
+    }
+
+    const finalReward = selectedReward;
+
+    // 5. XỬ LÝ LOGIC LOẠI QUÀ
+    const typeOfReward = finalReward.type;
     const valueOfReward = finalReward.voucher_value || 0;
     let voucherCode = null;
 
@@ -380,7 +373,7 @@ export const saveSpinResultService = async (userId, sessionId, campaignId) => {
       voucherCode = `SUMMER26-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     }
 
-    // 7. GHI LỊCH SỬ QUAY VÀO DB
+    // 6. GHI LỊCH SỬ QUAY VÀO DB
     await client.query(
       `INSERT INTO spin_results (
         play_session_id, user_id, campaign_id, reward_id, 
@@ -401,15 +394,13 @@ export const saveSpinResultService = async (userId, sessionId, campaignId) => {
       ],
     );
 
-    // 8. TRỪ KHO QUÀ (Chỉ trừ nếu đó là quà thật, bỏ qua giải no_reward)
-    if (typeOfReward !== "no_reward") {
-      await client.query(
-        `UPDATE rewards SET remaining_quantity = remaining_quantity - 1 WHERE id = $1`,
-        [finalReward.id],
-      );
-    }
+    // 7. TRỪ KHO QUÀ (Luôn trừ vì chắc chắn trúng quà thật)
+    await client.query(
+      `UPDATE rewards SET remaining_quantity = remaining_quantity - 1 WHERE id = $1`,
+      [finalReward.id],
+    );
 
-    // 9. KHÓA PHIÊN CHƠI (Tước cờ quay)
+    // 8. KHÓA PHIÊN CHƠI (Tước cờ quay)
     await client.query(
       `UPDATE play_sessions SET is_eligible_spin = false WHERE id = $1`,
       [sessionId],

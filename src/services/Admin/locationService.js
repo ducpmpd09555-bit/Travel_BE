@@ -224,8 +224,11 @@ export const getLocationByIdService = async (id) => {
 };
 
 // ================= UPDATE LOCATION =================
+// ================= UPDATE LOCATION =================
 export const updateLocationService = async (id, body) => {
-  const { name, description, image_url, status, lat, lng } = body || {};
+  // Bổ sung lấy country_id từ body
+  const { country_id, name, description, image_url, status, lat, lng } =
+    body || {};
 
   const slug = name ? generateSlug(name) : null;
   const parsedLat = lat === "" || lat === undefined ? null : Number(lat);
@@ -234,16 +237,28 @@ export const updateLocationService = async (id, body) => {
   const result = await pool.query(
     `UPDATE locations 
      SET 
-       name = COALESCE($1, name),
-       slug = COALESCE($2, slug),
-       description = COALESCE($3, description),
-       image_url = COALESCE($4, image_url),
-       status = COALESCE($5, status),
-       lat = COALESCE($6, lat),
-       lng = COALESCE($7, lng),
+       country_id = COALESCE($1, country_id),
+       name = COALESCE($2, name),
+       slug = COALESCE($3, slug),
+       description = COALESCE($4, description),
+       image_url = COALESCE($5, image_url),
+       status = COALESCE($6, status),
+       lat = COALESCE($7, lat),
+       lng = COALESCE($8, lng),
        updated_at = CURRENT_TIMESTAMP
-     WHERE id = $8 RETURNING *`,
-    [name, slug, description, image_url, status, parsedLat, parsedLng, id],
+     WHERE id = $9 RETURNING *`,
+    // Nhớ đưa country_id vào đầu mảng params theo đúng thứ tự $1
+    [
+      country_id,
+      name,
+      slug,
+      description,
+      image_url,
+      status,
+      parsedLat,
+      parsedLng,
+      id,
+    ],
   );
 
   if (result.rows.length === 0)

@@ -88,20 +88,25 @@ export const getCountryByIdService = async (id) => {
 };
 
 // ================= UPDATE =================
+// ================= UPDATE COUNTRY =================
 export const updateCountryService = async (id, body) => {
-  const { name, slug, description, image_url, status } = body || {};
+  // Bổ sung lấy campaign_id từ body
+  const { campaign_id, name, description, image_url, status } = body || {};
+
+  const slug = name ? generateSlug(name) : null;
 
   const result = await pool.query(
     `UPDATE countries 
      SET 
-       name = COALESCE($1, name),
-       slug = COALESCE($2, slug),
-       description = COALESCE($3, description),
-       image_url = COALESCE($4, image_url),
-       status = COALESCE($5, status),
+       campaign_id = COALESCE($1, campaign_id),
+       name = COALESCE($2, name),
+       slug = COALESCE($3, slug),
+       description = COALESCE($4, description),
+       image_url = COALESCE($5, image_url),
+       status = COALESCE($6, status),
        updated_at = CURRENT_TIMESTAMP
-     WHERE id = $6 RETURNING *`,
-    [name, slug, description, image_url, status, id],
+     WHERE id = $7 RETURNING *`,
+    [campaign_id, name, slug, description, image_url, status, id],
   );
 
   if (result.rows.length === 0)

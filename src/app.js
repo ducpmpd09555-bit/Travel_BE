@@ -24,7 +24,7 @@ const app = express();
 
 app.use(cors());
 app.use(morgan("dev"));
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "10mb" }));
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
 

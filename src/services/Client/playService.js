@@ -425,12 +425,13 @@ export const getLocationProgressService = async (userId, campaignId) => {
   const query = `
     SELECT 
       l.id AS location_id,
-      l.country_id,  -- THÊM DÒNG NÀY ĐỂ FRONTEND LỌC
+      l.country_id,
       l.name,
       l.image_url,
       l.description,
       l.lat,
       l.lng,
+      l.status AS location_status,
       COUNT(DISTINCT ps.id) AS total_attempts,
       MAX(ps.correct_answers) AS best_score,
       CASE 
@@ -445,9 +446,12 @@ export const getLocationProgressService = async (userId, campaignId) => {
     LEFT JOIN play_sessions ps ON sa.play_session_id = ps.id 
           AND ps.user_id = $1 
           AND ps.status IN ('completed', 'failed')
-    WHERE c.campaign_id = $2 AND l.status = 'active'
-    GROUP BY l.id, l.country_id, l.name, l.image_url, l.description, l.lat, l.lng -- THÊM l.country_id VÀO ĐÂY
-    ORDER BY l.id ASC;
+    WHERE c.campaign_id = $2
+    GROUP BY l.id, l.country_id, l.name, l.image_url, l.description, l.lat, l.lng, l.status
+    -- THAY ĐỔI Ở ĐÂY: Ưu tiên 'active' lên số 0 (đứng đầu), các trạng thái khác số 1 (đứng sau)
+    ORDER BY 
+      CASE WHEN l.status = 'active' THEN 0 ELSE 1 END ASC,
+      l.id ASC;
   `;
   const result = await pool.query(query, [userId, campaignId]);
   return result.rows;

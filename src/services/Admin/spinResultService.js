@@ -2,12 +2,18 @@ import pool from "../../config/db.js";
 
 // ================== ADMIN: LẤY DANH SÁCH TRÚNG THƯỞNG ==================
 export const getAllSpinResultsService = async (query) => {
-  const { page = 1, limit = 10, search, campaignId, rewardType } = query;
+  const {
+    page = 1,
+    limit = 10,
+    search,
+    campaignId,
+    rewardType,
+    status,
+  } = query;
   const offset = (page - 1) * limit;
   const params = [];
   const whereClauses = [];
 
-  // Tìm kiếm theo Tên người dùng hoặc Số điện thoại
   if (search) {
     params.push(`%${search}%`);
     whereClauses.push(
@@ -15,16 +21,62 @@ export const getAllSpinResultsService = async (query) => {
     );
   }
 
-  // Lọc theo Chiến dịch
   if (campaignId) {
     params.push(campaignId);
     whereClauses.push(`sr.campaign_id = $${params.length}`);
   }
 
-  // Lọc theo Loại quà (voucher / physical)
+  // FIX 1: Lọc Loại Quà bằng logic loại trừ y như Frontend
   if (rewardType) {
-    params.push(rewardType);
-    whereClauses.push(`sr.reward_type = $${params.length}`);
+    if (rewardType === "voucher") {
+      whereClauses.push(`sr.reward_type = 'voucher'`);
+    } else {
+      // physical: Lấy tất cả những gì KHÔNG PHẢI voucher (bao gồm cả NULL)
+      whereClauses.push(`sr.reward_type IS DISTINCT FROM 'voucher'`);
+    }
+  }
+
+  // FIX 2: Lọc Trạng Thái bằng logic loại trừ tuyệt đối
+  if (status) {
+    if (status === "cancelled") {
+      whereClauses.push(`sr.status = 'cancelled'`);
+    } else {
+      // Bắt buộc loại bỏ những đơn đã hủy
+      whereClauses.push(`sr.status IS DISTINCT FROM 'cancelled'`);
+
+      // ================= QUÀ VẬT LÝ =================
+      if (status === "pending") {
+        // Chờ liên hệ: Khác voucher VÀ khác contacted VÀ khác received
+        whereClauses.push(`
+          sr.reward_type IS DISTINCT FROM 'voucher' 
+          AND sr.physical_status IS DISTINCT FROM 'contacted' 
+          AND sr.physical_status IS DISTINCT FROM 'received'
+        `);
+      } else if (status === "contacted") {
+        whereClauses.push(`
+          sr.reward_type IS DISTINCT FROM 'voucher' 
+          AND sr.physical_status = 'contacted'
+        `);
+      } else if (status === "received") {
+        whereClauses.push(`
+          sr.reward_type IS DISTINCT FROM 'voucher' 
+          AND sr.physical_status = 'received'
+        `);
+      }
+      // ================= VOUCHER =================
+      else if (status === "issued") {
+        // Đã cấp mã: Là voucher VÀ khác used
+        whereClauses.push(`
+          sr.reward_type = 'voucher' 
+          AND sr.voucher_status IS DISTINCT FROM 'used'
+        `);
+      } else if (status === "used") {
+        whereClauses.push(`
+          sr.reward_type = 'voucher' 
+          AND sr.voucher_status = 'used'
+        `);
+      }
+    }
   }
 
   const whereString =

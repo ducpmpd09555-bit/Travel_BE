@@ -1,8 +1,26 @@
 import pool from "../../config/db.js";
 
+// ================= HELPER: AUTO GENERATE SLUG =================
+const generateSlug = (text) => {
+  if (!text) return null;
+  return text
+    .toString()
+    .toLowerCase()
+    .replace(/á|à|ả|ạ|ã|ă|ắ|ằ|ẳ|ẵ|ặ|â|ấ|ầ|ẩ|ẫ|ậ/gi, "a")
+    .replace(/é|è|ẻ|ẽ|ẹ|ê|ế|ề|ể|ễ|ệ/gi, "e")
+    .replace(/i|í|ì|ỉ|ĩ|ị/gi, "i")
+    .replace(/ó|ò|ỏ|õ|ọ|ô|ố|ồ|ổ|ỗ|ộ|ơ|ớ|ờ|ở|ỡ|ợ/gi, "o")
+    .replace(/ú|ù|ủ|ũ|ụ|ư|ứ|ừ|ử|ữ|ự/gi, "u")
+    .replace(/ý|ỳ|ỷ|ỹ|ỵ/gi, "y")
+    .replace(/đ/gi, "d")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-");
+};
+
 // ================= CREATE =================
 export const createCountryService = async (body) => {
-  const { campaign_id, name, slug, description, image_url, status } = body;
+  const { campaign_id, name, description, image_url, status } = body;
 
   const campaignCheck = await pool.query(
     "SELECT id FROM campaigns WHERE id = $1",
@@ -17,6 +35,9 @@ export const createCountryService = async (body) => {
   );
   if (duplicateCheck.rows.length > 0)
     throw { status: 409, message: "Quốc gia này đã tồn tại trong chiến dịch" };
+
+  // Tự động sinh slug ở backend
+  const slug = generateSlug(name);
 
   const result = await pool.query(
     `INSERT INTO countries (campaign_id, name, slug, description, image_url, status)
@@ -87,11 +108,16 @@ export const getCountryByIdService = async (id) => {
   return result.rows[0];
 };
 
-// ================= UPDATE =================
 // ================= UPDATE COUNTRY =================
 export const updateCountryService = async (id, body) => {
-  // Bổ sung lấy campaign_id từ body
-  const { campaign_id, name, description, image_url, status } = body || {};
+  // Gán mặc định = null để thư viện pg không báo lỗi crash
+  const {
+    campaign_id = null,
+    name = null,
+    description = null,
+    image_url = null,
+    status = null,
+  } = body || {};
 
   const slug = name ? generateSlug(name) : null;
 

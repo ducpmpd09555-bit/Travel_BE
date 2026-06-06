@@ -181,7 +181,7 @@ export const submitAnswersService = async (userId, sessionId, userAnswers) => {
       );
     }
 
-    const isPassed = correctCount >= 4;
+    const isPassed = correctCount >= 5;
     const finalStatus = isPassed ? "completed" : "failed";
 
     await client.query(

@@ -125,21 +125,54 @@ export const getQuestionByIdService = async (id) => {
 
 // ================= UPDATE QUESTION DETAILS =================
 export const updateQuestionService = async (id, body) => {
-  const { question_text, category, explanation, status } = body || {};
+  const { question_text, category, explanation, status, answers } = body || {};
 
-  const result = await pool.query(
-    `UPDATE questions 
-     SET 
-       question_text = COALESCE($1, question_text),
-       category = COALESCE($2, category),
-       explanation = COALESCE($3, explanation),
-       status = COALESCE($4, status),
-       updated_at = CURRENT_TIMESTAMP
-     WHERE id = $5 RETURNING *`,
-    [question_text, category, explanation, status, id],
-  );
+  const client = await pool.connect();
 
-  if (result.rows.length === 0)
-    throw { status: 404, message: "Không tìm thấy câu hỏi" };
-  return result.rows[0];
+  try {
+    await client.query("BEGIN");
+
+    // 1. Cập nhật bảng questions
+    const questionResult = await client.query(
+      `UPDATE questions 
+       SET 
+         question_text = COALESCE($1, question_text),
+         category = COALESCE($2, category),
+         explanation = COALESCE($3, explanation),
+         status = COALESCE($4, status),
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $5 RETURNING *`,
+      [question_text, category, explanation, status, id],
+    );
+
+    if (questionResult.rows.length === 0) {
+      throw { status: 404, message: "Không tìm thấy câu hỏi" };
+    }
+
+    // 2. Cập nhật bảng answers (Nếu có mảng answers gửi lên)
+    if (answers && answers.length === 4) {
+      // Loop qua 4 đáp án để update
+      const updateAnswerQueries = answers.map((ans) => {
+        // Cập nhật dựa vào option_label (A, B, C, D) và question_id
+        return client.query(
+          `UPDATE answers 
+           SET 
+             answer_text = $1, 
+             is_correct = $2 
+           WHERE question_id = $3 AND option_label = $4`,
+          [ans.answer_text, ans.is_correct || false, id, ans.option_label],
+        );
+      });
+
+      await Promise.all(updateAnswerQueries);
+    }
+
+    await client.query("COMMIT");
+    return questionResult.rows[0];
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 };
